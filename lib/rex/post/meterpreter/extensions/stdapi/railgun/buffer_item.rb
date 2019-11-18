@@ -1,3 +1,4 @@
+# -*- coding: binary -*-
 # Copyright (c) 2010, patrickHVE@googlemail.com
 # All rights reserved.
 #
@@ -34,14 +35,14 @@ module Railgun
 #
 class BufferItem
 
-	attr_reader :belongs_to_param_n, :addr, :length_in_bytes, :datatype
+  attr_reader :belongs_to_param_n, :addr, :length_in_bytes, :datatype
 
-	def initialize(belongs_to_param_n, addr, length_in_bytes, datatype)
-		@belongs_to_param_n = belongs_to_param_n
-		@addr = addr
-		@length_in_bytes = length_in_bytes
-		@datatype = datatype
-	end
+  def initialize(belongs_to_param_n, addr, length_in_bytes, datatype)
+    @belongs_to_param_n = belongs_to_param_n
+    @addr = addr
+    @length_in_bytes = length_in_bytes
+    @datatype = datatype
+  end
 end
 
 end; end; end; end; end; end

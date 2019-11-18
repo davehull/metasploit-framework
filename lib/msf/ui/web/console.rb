@@ -1,3 +1,5 @@
+# -*- coding: binary -*-
+require 'rex/ui/text/bidirectional_pipe'
 module Msf
 module Ui
 module Web
@@ -9,130 +11,135 @@ module Web
 ###
 
 class WebConsole
-	attr_accessor :pipe
-	attr_accessor :console
-	attr_accessor :console_id
-	attr_accessor :last_access
-	attr_accessor :framework
-	attr_accessor :thread
+  attr_accessor :pipe
+  attr_accessor :console
+  attr_accessor :console_id
+  attr_accessor :last_access
+  attr_accessor :framework
+  attr_accessor :thread
 
-	# Wrapper class in case we need to extend the pipe
-	class WebConsolePipe < Rex::IO::BidirectionalPipe
-		def prompting?
-			false
-		end
-	end
+  # Wrapper class in case we need to extend the pipe
+  class WebConsolePipe < Rex::Ui::Text::BidirectionalPipe
+    def prompting?
+      false
+    end
+  end
 
-	#
-	# Provides some overrides for web-based consoles
-	#
-	module WebConsoleShell
+  #
+  # Provides some overrides for web-based consoles
+  #
+  module WebConsoleShell
 
-		def supports_color?
-			false
-		end
-	end
+    def supports_color?
+      false
+    end
+  end
 
-	def initialize(framework, console_id, opts={})
-		# Configure the framework
-		self.framework = framework
+  def initialize(framework, console_id, opts={})
+    # Configure the framework
+    self.framework = framework
 
-		# Configure the ID
-		self.console_id = console_id
+    # Configure the ID
+    self.console_id = console_id
 
-		# Create a new pipe
-		self.pipe = WebConsolePipe.new
+    # Create a new pipe
+    self.pipe = WebConsolePipe.new
 
-		# Create a read subscriber
-		self.pipe.create_subscriber('msfweb')
+    # Create a read subscriber
+    self.pipe.create_subscriber('msfweb')
 
-		# Initialize the console with our pipe
-		self.console = Msf::Ui::Console::Driver.new(
-			'msf',
-			'>',
-			opts.merge({
-				'Framework'   => self.framework,
-				'LocalInput'  => self.pipe,
-				'LocalOutput' => self.pipe,
-				'AllowCommandPassthru' => true,
-				'Resource'    => [],
-			})
-		)
+    # Skip database initialization if it is already configured
+    if framework.db && framework.db.active
+      opts['SkipDatabaseInit'] = true
+    end
 
-		self.console.extend(WebConsoleShell)
-		self.console.block_command('irb')
+    # Initialize the console with our pipe
+    self.console = Msf::Ui::Console::Driver.new(
+      'msf',
+      '>',
+      opts.merge({
+        'Framework'   => self.framework,
+        'LocalInput'  => self.pipe,
+        'LocalOutput' => self.pipe,
+        'AllowCommandPassthru' => true,
+        'Resource'    => [],
+      })
+    )
 
-		self.thread = framework.threads.spawn("WebConsoleShell", false) { self.console.run }
+    self.console.extend(WebConsoleShell)
+    self.console.block_command('irb')
 
-		update_access()
-	end
+    self.thread = framework.threads.spawn("WebConsoleShell", false) { self.console.run }
 
-	def update_access
-		self.last_access = Time.now
-	end
+    update_access()
+  end
 
-	def read
-		update_access
-		self.pipe.read_subscriber('msfweb')
-	end
+  def update_access
+    self.last_access = Time.now
+  end
 
-	def write(buf)
-		update_access
-		self.pipe.write_input(buf)
-	end
+  def read
+    update_access
+    self.pipe.read_subscriber('msfweb')
+  end
 
-	def execute(cmd)
-		self.console.run_single(cmd)
-	end
+  def write(buf)
+    update_access
+    self.pipe.write_input(buf)
+  end
 
-	def prompt
-		self.pipe.prompt
-	end
+  def execute(cmd)
+    self.console.run_single(cmd)
+  end
 
-	def tab_complete(cmd)
-		if(self.console.active_session)
-			return self.console.active_session.console.tab_complete(cmd)
-		end
-		self.console.tab_complete(cmd)
-	end
+  def prompt
+    self.pipe.prompt
+  end
 
-	def shutdown
-		self.pipe.close
-		self.thread.kill
-	end
+  def tab_complete(cmd)
+    if(self.console.active_session)
+      return self.console.active_session.console.tab_complete(cmd)
+    end
+    self.console.tab_complete(cmd)
+  end
 
-	def busy
-		self.console.busy
-	end
+  def shutdown
+    self.pipe.close
+    self.thread.kill
+  end
 
-	def session_detach
-		if(self.console.active_session)
-			#background interactive meterpreter channel
-			if(self.console.active_session.respond_to?('channels'))
-				self.console.active_session.channels.each_value do |ch|
-					if(ch.respond_to?('interacting') && ch.interacting)
-						ch.detach()
-						return
-					end
-				end
-			end
-			#background session
-			self.console.active_session.completed = true
-			self.console.active_session.detach()
-		end
-	end
+  def busy
+    self.console.busy
+  end
 
-	def session_kill
-		self.thread.raise(Interrupt)
-	end
+  def session_detach
+    if(self.console.active_session)
+      #background interactive meterpreter channel
+      if(self.console.active_session.respond_to?('channels'))
+        self.console.active_session.channels.each_value do |ch|
+          if(ch.respond_to?('interacting') && ch.interacting)
+            ch.detach()
+            return
+          end
+        end
+      end
+      #background session
+      self.console.active_session.completed = true
+      self.console.active_session.detach()
+    end
+  end
 
-	def active_module
-		self.console.active_module
-	end
+  def session_kill
+    self.thread.raise(Interrupt)
+  end
 
-	def active_module=(val)
-		self.console.active_module = val
-	end
+  def active_module
+    self.console.active_module
+  end
+
+  def active_module=(val)
+    self.console.active_module = val
+  end
 
 end
 

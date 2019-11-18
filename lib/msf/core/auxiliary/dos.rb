@@ -1,3 +1,4 @@
+# -*- coding: binary -*-
 module Msf
 
 ###
@@ -11,7 +12,7 @@ module Auxiliary::Dos
 
 # Never include DoS modules in automated attacks
 def autofilter
-	false
+  false
 end
 
 end

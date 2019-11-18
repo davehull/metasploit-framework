@@ -1,6 +1,4 @@
-##
-# $Id$
-##
+# -*- coding: binary -*-
 
 require 'msf/base/sessions/meterpreter'
 
@@ -13,17 +11,17 @@ module Sessions
 #
 ###
 class Meterpreter_Java_Java < Msf::Sessions::Meterpreter
-	def supports_ssl?
-		false
-	end
-	def supports_zlib?
-		false
-	end
-	def initialize(rstream, opts={})
-		super
-		self.platform      = 'java/java'
-		self.binary_suffix = 'jar'
-	end
+  def supports_ssl?
+    false
+  end
+  def supports_zlib?
+    false
+  end
+  def initialize(rstream, opts={})
+    super
+    self.base_platform = 'java'
+    self.base_arch = ARCH_JAVA
+  end
 end
 
 end

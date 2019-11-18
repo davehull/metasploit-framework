@@ -1,251 +1,243 @@
-require 'msf/core'
-require 'msf/core/db'
-require 'msf/core/task_manager'
+# -*- coding: binary -*-
 
-module Msf
-
-###
 #
+# Gems
+#
+
+require 'rex/socket'
+
+#
+# Project
+#
+require 'metasploit/framework/require'
+require 'msf/base/config'
+require 'msf/core'
+require 'msf/core/database_event'
+require 'msf/core/db_import_error'
+require 'msf/core/host_state'
+require 'msf/core/service_state'
+require 'metasploit/framework/data_service'
+
+
 # The db module provides persistent storage and events. This class should be instantiated LAST
 # as the active_suppport library overrides Kernel.require, slowing down all future code loads.
-#
-###
+class Msf::DBManager
+  extend Metasploit::Framework::Require
 
-class DBManager
+  # Default proto for making new `Mdm::Service`s. This should probably be a
+  # const on `Mdm::Service`
+  DEFAULT_SERVICE_PROTO = "tcp"
 
-	# Provides :framework and other accessors
-	include Framework::Offspring
+  autoload :Adapter, 'msf/core/db_manager/adapter'
+  autoload :Client, 'msf/core/db_manager/client'
+  autoload :Connection, 'msf/core/db_manager/connection'
+  autoload :Cred, 'msf/core/db_manager/cred'
+  autoload :DbExport, 'msf/core/db_manager/db_export'
+  autoload :Event, 'msf/core/db_manager/event'
+  autoload :ExploitAttempt, 'msf/core/db_manager/exploit_attempt'
+  autoload :ExploitedHost, 'msf/core/db_manager/exploited_host'
+  autoload :Host, 'msf/core/db_manager/host'
+  autoload :HostDetail, 'msf/core/db_manager/host_detail'
+  autoload :HostTag, 'msf/core/db_manager/host_tag'
+  autoload :Import, 'msf/core/db_manager/import'
+  autoload :ImportMsfXml, 'msf/core/db_manager/import_msf_xml'
+  autoload :IPAddress, 'msf/core/db_manager/ip_address'
+  autoload :Login, 'msf/core/db_manager/login'
+  autoload :Loot, 'msf/core/db_manager/loot'
+  autoload :Migration, 'msf/core/db_manager/migration'
+  autoload :ModuleCache, 'msf/core/db_manager/module_cache'
+  autoload :Note, 'msf/core/db_manager/note'
+  autoload :Payload, 'msf/core/db_manager/payload'
+  autoload :Ref, 'msf/core/db_manager/ref'
+  autoload :Report, 'msf/core/db_manager/report'
+  autoload :Route, 'msf/core/db_manager/route'
+  autoload :Service, 'msf/core/db_manager/service'
+  autoload :Session, 'msf/core/db_manager/session'
+  autoload :SessionEvent, 'msf/core/db_manager/session_event'
+  autoload :Task, 'msf/core/db_manager/task'
+  autoload :User, 'msf/core/db_manager/user'
+  autoload :Vuln, 'msf/core/db_manager/vuln'
+  autoload :VulnAttempt, 'msf/core/db_manager/vuln_attempt'
+  autoload :VulnDetail, 'msf/core/db_manager/vuln_detail'
+  autoload :WMAP, 'msf/core/db_manager/wmap'
+  autoload :Web, 'msf/core/db_manager/web'
+  autoload :Workspace, 'msf/core/db_manager/workspace'
 
-	# Returns true if we are ready to load/store data
-	def active
-		return false if not @usable
-		(ActiveRecord::Base.connected? && ActiveRecord::Base.connection.active? && migrated) rescue false
-	end
+  optionally_include_metasploit_credential_creation
 
-	# Returns true if the prerequisites have been installed
-	attr_accessor :usable
+  # Interface must be included first
+  include Metasploit::Framework::DataService
 
-	# Returns the list of usable database drivers
-	attr_accessor :drivers
+  include Msf::DBManager::Adapter
+  include Msf::DBManager::Client
+  include Msf::DBManager::Connection
+  include Msf::DBManager::Cred
+  include Msf::DBManager::DbExport
+  include Msf::DBManager::Event
+  include Msf::DBManager::ExploitAttempt
+  include Msf::DBManager::ExploitedHost
+  include Msf::DBManager::Host
+  include Msf::DBManager::HostDetail
+  include Msf::DBManager::HostTag
+  include Msf::DBManager::Import
+  include Msf::DBManager::IPAddress
+  include Msf::DBManager::Login
+  include Msf::DBManager::Loot
+  include Msf::DBManager::Migration
+  include Msf::DBManager::ModuleCache
+  include Msf::DBManager::Note
+  include Msf::DBManager::Payload
+  include Msf::DBManager::Ref
+  include Msf::DBManager::Report
+  include Msf::DBManager::Route
+  include Msf::DBManager::Service
+  include Msf::DBManager::Session
+  include Msf::DBManager::SessionEvent
+  include Msf::DBManager::Task
+  include Msf::DBManager::User
+  include Msf::DBManager::Vuln
+  include Msf::DBManager::VulnAttempt
+  include Msf::DBManager::VulnDetail
+  include Msf::DBManager::WMAP
+  include Msf::DBManager::Web
+  include Msf::DBManager::Workspace
 
-	# Returns the active driver
-	attr_accessor :driver
+  # Provides :framework and other accessors
+  include Msf::Framework::Offspring
 
-	# Stores the error message for why the db was not loaded
-	attr_accessor :error
+  def name
+    'local_db_service'
+  end
 
-	# Stores a TaskManager for serializing database events
-	attr_accessor :sink
+  def is_local?
+    true
+  end
 
-	# Flag to indicate database migration has completed
-	attr_accessor :migrated
+  #
+  # Attributes
+  #
 
-	def initialize(framework, opts = {})
+  # Stores the error message for why the db was not loaded
+  attr_accessor :error
 
-		self.framework = framework
-		self.migrated  = false
-		@usable = false
+  # Returns true if the prerequisites have been installed
+  attr_accessor :usable
 
-		# Don't load the database if the user said they didn't need it.
-		if (opts['DisableDatabase'])
-			self.error = "disabled"
-			return
-		end
+  #
+  # initialize
+  #
 
-		initialize_database_support
-	end
+  def initialize(framework, opts = {})
 
-	#
-	# Do what is necessary to load our database support
-	#
-	def initialize_database_support
+    self.framework = framework
+    self.migrated  = false
+    self.modules_cached  = false
+    self.modules_caching = false
 
-		# Load ActiveRecord if it is available
-		begin
-			require 'rubygems'
-			require 'active_record'
-			require 'msf/core/db_objects'
-			require 'msf/core/model'
+    @usable = false
 
-			# Database drivers can reset our KCODE, do not let them
-			$KCODE = 'NONE' if RUBY_VERSION =~ /^1\.8\./
+    # Don't load the database if the user said they didn't need it.
+    if (opts['DisableDatabase'])
+      self.error = "disabled"
+      return
+    end
 
-			@usable = true
+    return initialize_database_support
+  end
 
-		rescue ::Exception => e
-			self.error = e
-			elog("DB is not enabled due to load error: #{e}")
-			return false
-		end
+  #
+  # Instance Methods
+  #
 
-		#
-		# Determine what drivers are available
-		#
-		initialize_drivers
+  #
+  # Determines if the database is functional
+  #
+  def check
+  ::ActiveRecord::Base.connection_pool.with_connection {
+    res = ::Mdm::Host.first
+  }
+  end
 
-		#
-		# Instantiate the database sink
-		#
-		initialize_sink
+  #
+  # Do what is necessary to load our database support
+  #
+  def initialize_database_support
+    begin
+      add_rails_engine_migration_paths
 
-		true
-	end
+      @usable = true
 
-	#
-	# Scan through available drivers
-	#
-	def initialize_drivers
-		self.drivers = []
-		tdrivers = %W{ postgresql }
-		tdrivers.each do |driver|
-			begin
-				ActiveRecord::Base.default_timezone = :utc
-				ActiveRecord::Base.establish_connection(:adapter => driver)
-				if(self.respond_to?("driver_check_#{driver}"))
-					self.send("driver_check_#{driver}")
-				end
-				ActiveRecord::Base.remove_connection
-				self.drivers << driver
-			rescue ::Exception
-			end
-		end
+    rescue ::Exception => e
+      self.error = e
+      elog("DB is not enabled due to load error: #{e}")
+      return false
+    end
 
-		if(not self.drivers.empty?)
-			self.driver = self.drivers[0]
-		end
+    #
+    # Determine what drivers are available
+    #
+    initialize_adapter
 
-		# Database drivers can reset our KCODE, do not let them
-		$KCODE = 'NONE' if RUBY_VERSION =~ /^1\.8\./
-	end
+    true
+  end
 
-	#
-	# Create a new database sink and initialize it
-	#
-	def initialize_sink
-		self.sink = TaskManager.new(framework)
-		self.sink.start
-	end
+  def init_db(opts)
 
-	#
-	# Add a new task to the sink
-	#
-	def queue(proc)
-		self.sink.queue_proc(proc)
-	end
+    init_success = false
 
-	#
-	# Connects this instance to a database
-	#
-	def connect(opts={})
+    # Append any migration paths necessary to bring the database online
+    if opts['DatabaseMigrationPaths']
+      opts['DatabaseMigrationPaths'].each do |migrations_path|
+        ActiveRecord::Migrator.migrations_paths << migrations_path
+      end
+    end
 
-		return false if not @usable
+    if connection_established?
+      after_establish_connection
+    else
+      configuration_pathname = Metasploit::Framework::Database.configurations_pathname(path: opts['DatabaseYAML'])
 
-		nopts = opts.dup
-		if (nopts['port'])
-			nopts['port'] = nopts['port'].to_i
-		end
+      if configuration_pathname.nil?
+        self.error = "No database YAML file"
+      else
+        if configuration_pathname.readable?
+          # parse specified database YAML file
+          dbinfo = YAML.load_file(configuration_pathname) || {}
+          dbenv  = opts['DatabaseEnv'] || Rails.env
+          db     = dbinfo[dbenv]
+        else
+          elog("Warning, #{configuration_pathname} is not readable. Try running as root or chmod.")
+        end
 
-		nopts['pool'] = 75
+        if not db
+          elog("No database definition for environment #{dbenv}")
+        else
+          init_success = connect(db)
+        end
+      end
+    end
 
-		begin
-			self.migrated = false
-			create_db(nopts)
+    # framework.db.active will be true if after_establish_connection ran directly when connection_established? was
+    # already true or if framework.db.connect called after_establish_connection.
+    if !! error
+      if error.to_s =~ /RubyGem version.*pg.*0\.11/i
+        elog("***")
+        elog("*")
+        elog("* Metasploit now requires version 0.11 or higher of the 'pg' gem for database support")
+        elog("* There a three ways to accomplish this upgrade:")
+        elog("* 1. If you run Metasploit with your system ruby, simply upgrade the gem:")
+        elog("*    $ rvmsudo gem install pg ")
+        elog("* 2. Use the Community Edition web interface to apply a Software Update")
+        elog("* 3. Uninstall, download the latest version, and reinstall Metasploit")
+        elog("*")
+        elog("***")
+        elog("")
+        elog("")
+      end
 
-			# Configure the database adapter
-			ActiveRecord::Base.establish_connection(nopts)
+      elog("Failed to connect to the database: #{error}")
+    end
 
-			# Migrate the database, if needed
-			migrate
-
-			# Set the default workspace
-			framework.db.workspace = framework.db.default_workspace
-
-			# Flag that migration has completed
-			self.migrated = true
-		rescue ::Exception => e
-			self.error = e
-			elog("DB.connect threw an exception: #{e}")
-			dlog("Call stack: #{$@.join"\n"}", LEV_1)
-			return false
-		ensure
-			# Database drivers can reset our KCODE, do not let them
-			$KCODE = 'NONE' if RUBY_VERSION =~ /^1\.8\./
-		end
-
-		true
-	end
-
-	#
-	# Attempt to create the database
-	#
-	# If the database already exists this will fail and we will continue on our
-	# merry way, connecting anyway.  If it doesn't, we try to create it.  If
-	# that fails, then it wasn't meant to be and the connect will raise a
-	# useful exception so the user won't be in the dark; no need to raise
-	# anything at all here.
-	#
-	def create_db(opts)
-		begin
-			case opts["adapter"]
-			when 'postgresql'
-				# Try to force a connection to be made to the database, if it succeeds
-				# then we know we don't need to create it :)
-				ActiveRecord::Base.establish_connection(opts)
-				conn = ActiveRecord::Base.connection
-			end
-		rescue ::Exception => e
-			errstr = e.to_s
-			if errstr =~ /does not exist/i or errstr =~ /Unknown database/
-				ilog("Database doesn't exist \"#{opts['database']}\", attempting to create it.")
-				ActiveRecord::Base.establish_connection(opts.merge('database' => nil))
-				ActiveRecord::Base.connection.create_database(opts['database'])
-			else
-				ilog("Trying to continue despite failed database creation: #{e}")
-			end
-		end
-		ActiveRecord::Base.remove_connection
-	end
-
-	#
-	# Disconnects a database session
-	#
-	def disconnect
-		begin
-			ActiveRecord::Base.remove_connection
-		rescue ::Exception => e
-			self.error = e
-			elog("DB.disconnect threw an exception: #{e}")
-		ensure
-			# Database drivers can reset our KCODE, do not let them
-			$KCODE = 'NONE' if RUBY_VERSION =~ /^1\.8\./
-		end
-	end
-
-	#
-	# Migrate database to latest schema version
-	#
-	def migrate(verbose=false)
-		begin
-			migrate_dir = ::File.join(Msf::Config.install_root, "data", "sql", "migrate")
-			ActiveRecord::Migration.verbose = verbose
-			ActiveRecord::Migrator.migrate(migrate_dir, nil)
-		rescue ::Exception => e
-			self.error = e
-			elog("DB.migrate threw an exception: #{e}")
-			dlog("Call stack:\n#{e.backtrace.join "\n"}")
-			return false
-		end
-		return true
-	end
-
-	def workspace=(workspace)
-		@workspace_name = workspace.name
-	end
-
-	def workspace
-		framework.db.find_workspace(@workspace_name)
-	end
-
+    return init_success
+  end
 end
-end
-

@@ -1,3 +1,4 @@
+# -*- coding: binary -*-
 # Copyright (C) 2008 TOMITA Masahiro
 # mailto:tommy@tmtm.org
 
@@ -31,7 +32,7 @@ class RbMysql
     alias get_client_info client_info
 
     def escape_string(str)
-      str.gsub(/[\0\n\r\\\'\"\x1a]/) do |s|
+      str.gsub(/[\0\n\r\\\'\"\x1a]/n) do |s|
         case s
         when "\0" then "\\0"
         when "\n" then "\\n"

@@ -1,3 +1,4 @@
+# -*- coding: binary -*-
 #
 # Author:: Michael Neumann
 # Copyright:: (c) 2005 by Michael Neumann
@@ -43,7 +44,7 @@ class Message
 
   def self.read(stream, startup=false)
     type = stream.read_exactly_n_bytes(1) unless startup
-    length = stream.read_exactly_n_bytes(4).unpack('N').first  # FIXME: length should be signed, not unsigned
+    length = stream.read_exactly_n_bytes(4).to_s.unpack('N').first  # FIXME: length should be signed, not unsigned
 
     raise ParseError unless length >= 4
 

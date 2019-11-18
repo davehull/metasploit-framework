@@ -1,3 +1,4 @@
+# -*- coding: binary -*-
 require 'singleton'
 require 'rex'
 require 'rex/service'
@@ -12,142 +13,142 @@ module Rex
 ###
 class ServiceManager < Hash
 
-	#
-	# This class is a singleton.
-	#
-	include Singleton
+  #
+  # This class is a singleton.
+  #
+  include Singleton
 
-	#
-	# Calls the instance method to start a service.
-	#
-	def self.start(klass, *args)
-		self.instance.start(klass, *args)
-	end
-	
-	#
-	# Calls the instance method to stop a service.
-	#
-	def self.stop(klass, *args)
-		self.instance.stop(klass, *args)
-	end
+  #
+  # Calls the instance method to start a service.
+  #
+  def self.start(klass, *args)
+    self.instance.start(klass, *args)
+  end
 
-	#
-	# Stop a service using the alias that's associated with it.
-	#
-	def self.stop_by_alias(als)
-		self.instance.stop_by_alias(als)
-	end
+  #
+  # Calls the instance method to stop a service.
+  #
+  def self.stop(klass, *args)
+    self.instance.stop(klass, *args)
+  end
 
-	#
-	# Stop the supplied service instance.
-	#
-	def self.stop_service(service)
-		self.instance.stop_service(service)
-	end
+  #
+  # Stop a service using the alias that's associated with it.
+  #
+  def self.stop_by_alias(als)
+    self.instance.stop_by_alias(als)
+  end
 
-	#
-	# Starts a service and assigns it a unique name in the service hash.
-	#
-	def start(klass, *args)
-		# Get the hardcore alias.
-		hals = "#{klass}" + klass.hardcore_alias(*args)
+  #
+  # Stop the supplied service instance.
+  #
+  def self.stop_service(service)
+    self.instance.stop_service(service)
+  end
 
-		# Has a service already been constructed for this guy?  If so, increment
-		# its reference count like it aint no thang.
-		if (inst = self[hals])
-			inst.ref
-			return inst
-		end
+  #
+  # Starts a service and assigns it a unique name in the service hash.
+  #
+  def start(klass, *args)
+    # Get the hardcore alias.
+    hals = "#{klass}" + klass.hardcore_alias(*args)
 
-		inst = klass.new(*args)
-		als  = inst.alias
+    # Has a service already been constructed for this guy?  If so, increment
+    # its reference count like it aint no thang.
+    if (inst = self[hals])
+      inst.ref
+      return inst
+    end
 
-		# Find an alias that isn't taken.
-		if (self[als])
-			cnt  = 1
-			cnt += 1 while (self[als + " #{cnt}"])
-			als  = inst.alias + " #{cnt}"
-		end
+    inst = klass.new(*args)
+    als  = inst.alias
 
-		# Extend the instance as a service.
-		inst.extend(Rex::Service)
+    # Find an alias that isn't taken.
+    if (self[als])
+      cnt  = 1
+      cnt += 1 while (self[als + " #{cnt}"])
+      als  = inst.alias + " #{cnt}"
+    end
 
-		# Re-aliases the instance.
-		inst.alias = als
+    # Extend the instance as a service.
+    inst.extend(Rex::Service)
 
-		# Fire up the engines.  If an error occurs an exception will be 
-		# raised.
-		inst.start
+    # Re-aliases the instance.
+    inst.alias = als
 
-		# Alias associate and initialize reference counting
-		self[als] = self[hals] = inst.refinit
+    # Fire up the engines.  If an error occurs an exception will be
+    # raised.
+    inst.start
 
-		# Pass the caller a reference
-		inst.ref
+    # Alias associate and initialize reference counting
+    self[als] = self[hals] = inst.refinit
 
-		inst
-	end
+    # Pass the caller a reference
+    inst.ref
 
-	#
-	# Stop a service using a given klass and arguments.  These should mirror
-	# what was originally passed to start exactly.  If the reference count of
-	# the service drops to zero the service will be destroyed.
-	#
-	def stop(klass, *args)
-		stop_service(hals[hardcore_alias(klass, *args)])
-	end
+    inst
+  end
 
-	#
-	# Stops a service using the provided alias.
-	#
-	def stop_by_alias(als)
-		stop_service(self[als])
-	end
+  #
+  # Stop a service using a given klass and arguments.  These should mirror
+  # what was originally passed to start exactly.  If the reference count of
+  # the service drops to zero the service will be destroyed.
+  #
+  def stop(klass, *args)
+    stop_service(hals[hardcore_alias(klass, *args)])
+  end
 
-	#
-	# Stops a service instance.
-	#
-	def stop_service(inst)
-		# Stop the service and be done wif it, but only if the number of
-		# references has dropped to zero
-		if (inst)
-			# Since the instance may have multiple aliases, scan through
-			# all the pairs for matching stuff.
-			self.each_pair { |cals, cinst|
-				self.delete(cals) if (inst == cinst)
-			}
+  #
+  # Stops a service using the provided alias.
+  #
+  def stop_by_alias(als)
+    stop_service(self[als])
+  end
 
-			# Lose the list-held reference to the instance
-			inst.deref
+  #
+  # Stops a service instance.
+  #
+  def stop_service(inst)
+    # Stop the service and be done wif it, but only if the number of
+    # references has dropped to zero
+    if (inst)
+      # Since the instance may have multiple aliases, scan through
+      # all the pairs for matching stuff.
+      self.each_pair { |cals, cinst|
+        self.delete(cals) if (inst == cinst)
+      }
 
-			return true
-		end
+      # Lose the list-held reference to the instance
+      inst.deref
 
-		# Return false if the service isn't there
-		return false
-	end
+      return true
+    end
 
-	#
-	# Overrides the builtin 'each' operator to avoid the following exception on Ruby 1.9.2+
-	#    "can't add a new key into hash during iteration"
-	#
-	def each(&block)
-		list = []
-		self.keys.sort.each do |sidx|
-			list << [sidx, self[sidx]]
-		end
-		list.each(&block)
-	end
-	
+    # Return false if the service isn't there
+    return false
+  end
+
+  #
+  # Overrides the builtin 'each' operator to avoid the following exception on Ruby 1.9.2+
+  #    "can't add a new key into hash during iteration"
+  #
+  def each(&block)
+    list = []
+    self.keys.sort.each do |sidx|
+      list << [sidx, self[sidx]]
+    end
+    list.each(&block)
+  end
+
 protected
 
-	# 
-	# Returns the alias for a given service instance.
-	#
-	def hardcore_alias(klass, *args)
-		"__#{klass.name}#{args}"
-	end
-	
+  #
+  # Returns the alias for a given service instance.
+  #
+  def hardcore_alias(klass, *args)
+    "__#{klass.name}#{args}"
+  end
+
 end
 
 end
